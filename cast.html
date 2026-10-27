@@ -1,0 +1,124 @@
+<!-- cast.html 接收端 -->
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Yoga Coach · 投屏</title>
+<style>
+  html,body{margin:0;height:100%;background:#05080b;color:#e9eef5;overflow:hidden;
+    font-family:-apple-system,"PingFang SC",sans-serif}
+  #cv{position:absolute;inset:0;width:100%;height:100%}
+  #hud{position:absolute;left:28px;top:24px;font-size:52px;font-weight:700;color:#3ddc97;
+    font-variant-numeric:tabular-nums}
+  #pose{position:absolute;left:30px;top:90px;font-size:20px;color:#8fa1b5}
+  #cues{position:absolute;left:28px;bottom:36px;right:28px;font-size:26px;
+    color:#ffc46b;line-height:1.6}
+  #wait{position:absolute;inset:0;display:grid;place-items:center;color:#5b6e82;font-size:20px}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="hud">--</div>
+<div id="pose"></div>
+<div id="cues"></div>
+<div id="wait">等待接收画面…</div>
+
+<script>
+const cv = document.getElementById("cv");
+const ctx = cv.getContext("2d");
+const hud = document.getElementById("hud");
+const poseEl = document.getElementById("pose");
+const cuesEl = document.getElementById("cues");
+const waitEl = document.getElementById("wait");
+
+function fit() {
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  cv.width = innerWidth * dpr;
+  cv.height = innerHeight * dpr;
+}
+fit();
+addEventListener("resize", fit);
+
+const CONN = [[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],
+              [23,25],[25,27],[24,26],[26,28],[25,27],[27,29],[26,28],[28,30]];
+
+function render(m) {
+  waitEl.style.display = "none";
+  const W = cv.width, H = cv.height;
+  ctx.clearRect(0, 0, W, H);
+
+  const s = Math.round((m.score || 0) * 100);
+  hud.textContent = s + " 分";
+  hud.style.color = s >= 90 ? "#3ddc97" : s >= 75 ? "#a8e6a1" : s >= 60 ? "#ffb020" : "#ff5d5d";
+  poseEl.textContent = m.pose ? `动作：${m.pose}　保持 ${((m.hold || 0) / 1000).toFixed(1)}s` : "";
+  cuesEl.innerHTML = (m.cues || []).map(c => `<div>· ${c}</div>`).join("");
+
+  if (!m.lm) return;
+
+  ctx.save();
+  // 镜像，像照镜子一样更自然
+  ctx.translate(W, 0);
+  ctx.scale(-1, 1);
+  ctx.lineCap = "round";
+
+  for (const [i, j] of CONN) {
+    const a = m.lm[i], b = m.lm[j];
+    if (!a || !b) continue;
+    if (a[2] < 0.3 || b[2] < 0.3) continue;
+    ctx.strokeStyle = "rgba(61,220,151,.9)";
+    ctx.lineWidth = 10;
+    ctx.beginPath();
+    ctx.moveTo(a[0] * W, a[1] * H);
+    ctx.lineTo(b[0] * W, b[1] * H);
+    ctx.stroke();
+  }
+
+  for (const i of [0,11,12,13,14,15,16,23,24,25,26,27,28]) {
+    const p = m.lm[i];
+    if (!p || p[2] < 0.3) continue;
+    ctx.beginPath();
+    ctx.arc(p[0] * W, p[1] * H, 11, 0, Math.PI * 2);
+    ctx.fillStyle = "#fff";
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// ① Presentation API 通道
+if (navigator.presentation?.receiver) {
+  navigator.presentation.receiver.connectionList.then(list => {
+    const bind = c => c.addEventListener("message", ev => {
+      try { render(JSON.parse(ev.data)); } catch {}
+    });
+    list.connections.forEach(bind);
+    list.addEventListener("connectionavailable", e => bind(e.connection));
+  });
+}
+
+// ② BroadcastChannel 通道（同浏览器多窗口）
+try {
+  new BroadcastChannel("yoga-cast").onmessage = ev => {
+    try { render(JSON.parse(ev.data)); } catch {}
+  };
+} catch {}
+/* ③ WebSocket 通道：跨设备投屏（依赖 server.js） */
+(function connectWS() {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  const url = `${proto}//${location.host}/ws`;
+  let ws = null, retry = 0;
+
+  function open() {
+    if (!location.host) return;
+    try { ws = new WebSocket(url); } catch { return; }
+    ws.onmessage = (e) => { try { render(JSON.parse(e.data)); } catch {} };
+    ws.onopen = () => { retry = 0; };
+    ws.onclose = () => {
+      retry = Math.min(retry + 1, 6);
+      setTimeout(open, 800 * retry);
+    };
+  }
+  open();
+})();
+</script>
+</body>
+</html>
