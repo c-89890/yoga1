@@ -1,0 +1,19 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>语音测试</title>
+<button id="b" style="font-size:22px;padding:24px;margin:20px">点我说话</button>
+<div id="log" style="padding:0 20px;font-size:14px;word-break:break-all"></div>
+<script>
+b.onclick = () => {
+  const s = speechSynthesis;
+  const vs = s.getVoices();
+  log.textContent = "语音包：" + vs.map(v => v.lang + " " + v.name).join(" | ");
+  const u = new SpeechSynthesisUtterance("测试语音，一二三四五");
+  u.lang = "zh-CN"; u.volume = 1; u.rate = 1;
+  u.onstart = () => log.textContent += " ｜开始";
+  u.onend   = () => log.textContent += " ｜结束";
+  u.onerror = e => log.textContent += " ｜错误:" + e.error;
+  s.speak(u);
+};
+</script>
