@@ -1,3 +1,4 @@
+import { unlockVoice, preloadVoice, cue, sayPhrase, stopVoice } from "./voice.js";
 import { createPoseLandmarker, openCamera } from "./pose.js";
 import { POSES } from "./poses.js";
 import { LandmarkSmoother, Ema, repairLandmarks } from "./smoothing.js";
@@ -23,14 +24,14 @@ const overlay = new Overlay(canvas);
 const cast = new CastSender();
 const voice = new VoiceCoach({ rate: 1.05 });
 const snaps = new SnapshotBook();
-const fullCache = new Map();   // id -> 原图 dataURL（仅当前会话）
+const fullCache = new Map();
 
 const QUALITY = {
   speed:    { quality: "lite", width: 640,  height: 480, fps: 15, strict: 1.25 },
   balanced: { quality: "lite", width: 960,  height: 540, fps: 18, strict: 1.0 },
   accurate: { quality: "full", width: 1280, height: 720, fps: 12, strict: 0.85 }
 };
-  
+
 const state = {
   running: false, landmarker: null, stream: null, facing: "user",
   pose: POSES[0], quality: "balanced",
@@ -39,7 +40,7 @@ const state = {
   hold: 0, lastTick: 0,
   voiceOn: true, lastVoiceAt: 0,
   lastDetectPoseAt: 0, suggest: null,
-  last: null,            // { lm, out, score }
+  last: null,
   scores: [], startedAt: 0
 };
 
@@ -56,13 +57,14 @@ poseSelect.addEventListener("change", () => {
   state.hold = 0; state.scores = [];
   renderRules(null); cuesEl.innerHTML = "";
   hideSuggest();
+  voice.speak("已切换到" + state.pose.name.split(" ")[0]);
 });
 
 qualitySel.addEventListener("change", async () => {
   state.quality = qualitySel.value;
   const q = QUALITY[state.quality];
   state.frameInterval = 1000 / q.fps;
-  voice.speak("已切换到" + (state.quality === "accurate" ? "精细" : state.quality === "speed" ? "流畅" : "均衡") + "模式");
+  toast("已切换画质：" + (state.quality === "accurate" ? "精细" : state.quality === "speed" ? "流畅" : "均衡"));
   if (state.running) await restartPipeline();
 });
 
@@ -78,7 +80,7 @@ startBtn.addEventListener("click", async () => {
     state.startedAt = performance.now();
     state.lastTick = performance.now();
     video.requestVideoFrameCallback(tick);
-    voice.speak("开始练习，调整好姿势", { force: true });
+    voice.speak("开始练习");
   } catch (e) {
     console.error(e);
     splashHint.textContent = "启动失败：" + (e?.message || e);
@@ -148,7 +150,7 @@ function tick() {
 
   if (score >= 0.78) state.hold += dt; else state.hold = 0;
   state.last = { lm, out, score };
-  // 每帧校准画布，防止分辨率/方向变化导致骨架错位
+
   if (video.videoWidth && (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight)) {
     overlay.resize(video.videoWidth, video.videoHeight);
   }
@@ -159,7 +161,7 @@ function tick() {
   // 语音：4 秒冷却，避免刷屏
   if (state.voiceOn && now - state.lastVoiceAt > 4000) {
     if (out.cues.length) { voice.coach(out.cues, score); state.lastVoiceAt = now; }
-    else if (score >= 0.93) { voice.speak("很好，保持住"); state.lastVoiceAt = now; }
+    else if (score >= 0.93) { voice.speak("很好"); state.lastVoiceAt = now; }
   }
 
   // 动作自动识别：1.5 秒一次
@@ -281,7 +283,6 @@ function takeSnapshot() {
 
   paintSkeleton(g, s.lm, s.out.badJoints, W, H, true);
 
-  // 水印
   const pad = Math.round(W * 0.03);
   g.font = `600 ${Math.round(W / 22)}px -apple-system,"PingFang SC",sans-serif`;
   g.textBaseline = "top";
@@ -425,7 +426,6 @@ function toast(msg, ms = 2600) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove("show"), ms);
 }
-
 
 /* ---------------- PWA ---------------- */
 if ("serviceWorker" in navigator) {
