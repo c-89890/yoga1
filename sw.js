@@ -1,5 +1,4 @@
-// sw.js —— 应用壳缓存优先，模型/wasm 首次拉取后缓存
-const APP_CACHE = "yoga-app-v1";
+const APP_CACHE = "yoga-app-v3";
 const CDN_CACHE = "yoga-cdn-v1";
 
 const ASSETS = [
@@ -7,7 +6,7 @@ const ASSETS = [
   "./src/main.js", "./src/pose.js", "./src/angles.js",
   "./src/smoothing.js", "./src/poses.js", "./src/scorer.js",
   "./src/overlay.js", "./src/cast.js", "./src/ble.js",
-  "./src/speech.js", "./src/history.js"      // ← 新增
+  "./src/speech.js", "./src/history.js", "./src/voice.js"
 ];
 
 self.addEventListener("install", (e) => {
@@ -29,7 +28,6 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
 
-  // 跨域资源（模型、wasm、CDN 脚本）：缓存优先
   if (url.origin !== location.origin) {
     e.respondWith((async () => {
       const cache = await caches.open(CDN_CACHE);
@@ -42,7 +40,6 @@ self.addEventListener("fetch", (e) => {
     return;
   }
 
-  // 同源资源：缓存优先 + 后台更新
   e.respondWith((async () => {
     const cache = await caches.open(APP_CACHE);
     const hit = await cache.match(e.request);
